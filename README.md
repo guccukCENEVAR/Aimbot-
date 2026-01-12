@@ -54,28 +54,74 @@ aimbot/
 
 ## 🚀 Kurulum
 
+### ⚠️ ÖNEMLİ: GameData Ayarı (ZORUNLU)
+
+> **Bu adım yapılmadan plugin ÇALIŞMAZ!**
+
+Ray Tracing özelliğinin çalışması için CounterStrikeSharp'ın `gamedata.json` dosyasına aşağıdaki satırları eklemeniz **zorunludur**.
+
+**Dosya Konumu:**
+```
+game/csgo/addons/counterstrikesharp/gamedata/gamedata.json
+```
+
+**Eklenecek Satırlar:**
+
+`gamedata.json` dosyasını açın ve mevcut JSON içeriğinin sonuna (son `}` 'den önce) aşağıdaki satırları ekleyin:
+
+```json
+,
+  "CNavPhysicsInterface_TraceShape": {
+    "offsets": {
+      "windows": 1,
+      "linux": 5
+    }
+  },
+  "CTraceFilterVtable": {
+    "signatures": {
+      "library": "server",
+      "windows": "4C 8D 2D ? ? ? ? 24",
+      "linux": "48 8D 0D ? ? ? ? 66 89 95"
+    }
+  }
+```
+
+> ⚠️ **NOT:** JSON formatına dikkat edin! İlk satırdaki virgül (`,`) önceki girişten sonra eklenmeli.
+
+---
+
+### Kurulum Adımları
+
 1. Bu repository'yi klonlayın veya ZIP olarak indirin:
 ```bash
 git clone https://github.com/guccukCENEVAR/Aimbot-.git
 cd Aimbot-
 ```
 
-2. Release klasöründeki dosyaları sunucunuzun plugins klasörüne kopyalayın:
+2. **GameData ayarını yapın** (yukarıdaki adıma bakın) ⬆️
+
+3. Release klasöründeki dosyaları sunucunuzun plugins klasörüne kopyalayın:
 ```
 game/csgo/addons/counterstrikesharp/plugins/Aimbot/
 ├── Aimbot.dll
-└── RayTrace.dll (gerekirse)
 ```
 
-3. Sunucuyu yeniden başlatın veya plugin'i manuel olarak yükleyin:
+4. Sunucuyu yeniden başlatın veya plugin'i manuel olarak yükleyin:
 ```
 css_plugins load Aimbot
 ```
 
-4. Konsolda şu mesajı görmelisiniz:
+5. Konsolda şu mesajı görmelisiniz:
 ```
 [Aimbot] V1.3.0 - Wall Check + Prediction Yuklendi!
 ```
+
+### ❌ Olası Hatalar
+
+| Hata | Çözüm |
+|------|-------|
+| `Failed to find RayTrace signature` | GameData ayarı yapılmamış. Yukarıdaki adımı uygulayın. |
+| Plugin yüklenmiyor | JSON formatını kontrol edin, virgül eksik olabilir. |
 
 ## 🎮 Kullanım
 
