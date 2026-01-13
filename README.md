@@ -5,7 +5,7 @@ Counter-Strike 2 sunucuları için gelişmiş admin aim assist (nişan yardımı
 ## 📋 İçindekiler
 
 - [Özellikler](#-özellikler)
-- [Yenilikler v1.3.0](#-yenilikler-v130)
+- [Yenilikler v1.4.0](#-yenilikler-v140)
 - [Gereksinimler](#-gereksinimler)
 - [Kurulum](#-kurulum)
 - [Kullanım](#-kullanım)
@@ -25,7 +25,7 @@ Counter-Strike 2 sunucuları için gelişmiş admin aim assist (nişan yardımı
 - **🛡️ Admin Yetki Sistemi**: Sadece `@css/generic` yetkisine sahip adminler tarafından kullanılabilir
 - **⚡ Anlık Kilitlenme (Snap)**: Teleport metodu ile görüş açısını anında hedefe yönlendirir
 
-## 🆕 Yenilikler v1.3.0
+## 🆕 Yenilikler v1.4.0
 
 ### 🧱 Ray Tracing Duvar Kontrolü
 - Oyuncu ile hedef arasında duvar/engel kontrolü
@@ -113,7 +113,7 @@ css_plugins load Aimbot
 
 5. Konsolda şu mesajı görmelisiniz:
 ```
-[Aimbot] V1.3.0 - Wall Check + Prediction Yuklendi!
+[Aimbot] V1.4.0 - Smooth Aim + Wall Check + Prediction Yuklendi!
 ```
 
 ### ❌ Olası Hatalar
