@@ -81,7 +81,7 @@ public class AimbotPlugin : BasePlugin
         RegisterListener<Listeners.OnTick>(OnTick);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
 
-        Console.WriteLine($"[Aimbot] V1.8.0 - Smooth Aim (Factor: {_config.SmoothFactor}) + Speed Preserve + Wall Check + Prediction!");
+        Console.WriteLine($"[Aimbot] V1.4.0 - Smooth Aim (Factor: {_config.SmoothFactor}) + Speed Preserve + Wall Check + Prediction!");
     }
 
     private string GetConfigPath()
