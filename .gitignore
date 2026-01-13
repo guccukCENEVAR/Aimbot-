@@ -13,3 +13,8 @@ obj/
 # Config (local)
 csgo/
 
+# NuGet
+*.nupkg
+
+# IDE
+*.swp
