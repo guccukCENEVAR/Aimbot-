@@ -32,6 +32,10 @@ Counter-Strike 2 sunucuları için gelişmiş admin aim assist (nişan yardımı
 - `TraceEndShape` fonksiyonu ile hassas ışın izleme
 - Dünya geometrisi ve solid objelerle etkileşim kontrolü
 - Fraction değeri ile görüş hattı doğrulaması (≥0.99 = temiz görüş)
+- Smooth Aim için SmoothFactor artık config’ten okunuyor (configs/plugins/Aimbot/aimbot_config.json), varsayılan 0.5.
+- Config dosyasına açıklama eklendi: 0.0 çok yavaş, 1.0 anında snap.
+- Artık oyuncular teleport olmuyor onların viewangle'ı teleport oluyor bu sayede kullanıcı hızını koruyabiliyor
+- Smooth interpolasyon (wrap-around yaw) ile hedefe yumuşak geçiş.
 
 ### 📁 Yeni Dosya Yapısı
 ```
