@@ -7,6 +7,8 @@ using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Memory;
 using Vector = CounterStrikeSharp.API.Modules.Utils.Vector;
 
+// Ray tracing utilities (v1.4.0)
+
 namespace RayTrace;
 
 [Flags]
