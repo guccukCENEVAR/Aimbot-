@@ -74,20 +74,36 @@ game/csgo/addons/counterstrikesharp/gamedata/gamedata.json
 `gamedata.json` dosyasını açın ve mevcut JSON içeriğinin sonuna (son `}` 'den önce) aşağıdaki satırları ekleyin:
 
 ```json
-,
+{
   "CNavPhysicsInterface_TraceShape": {
     "offsets": {
-      "windows": 1,
+      "windows": 3,
       "linux": 5
     }
   },
   "CTraceFilterVtable": {
     "signatures": {
       "library": "server",
-      "windows": "4C 8D 2D ? ? ? ? 24",
-      "linux": "48 8D 0D ? ? ? ? 66 89 95"
+      "windows": "48 8D 05 ? ? ? ? 48 89 01 48 8D 05 ? ? ? ? 48 89 41 08",
+      "linux": "48 8D 05 ? ? ? ? 48 89 07 48 8D 05 ? ? ? ? 48 89 47 08"
+    },
+    "symbols": {
+      "library": "server",
+      "linux": "_ZTV12CTraceFilter"
+    }
+  },
+  "CNavPhysicsInterface": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 8B 0D ? ? ? ? 48 8D 54 24 ? 48 8B 01 FF 50 ? 48 8B 0D",
+      "linux": "48 8B 05 ? ? ? ? 48 8D 35 ? ? ? ? 48 8B 00 48 89 74 24"
+    },
+    "symbols": {
+      "library": "server",
+      "linux": "g_pNavPhysicsInterface"
     }
   }
+}
 ```
 
 > ⚠️ **NOT:** JSON formatına dikkat edin! İlk satırdaki virgül (`,`) önceki girişten sonra eklenmeli.
