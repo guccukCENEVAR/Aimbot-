@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.IO;
+using System.Drawing;
 using RayTrace;
 using static RayTrace.RayTrace;
 
@@ -20,21 +21,45 @@ public class AimbotConfig
     [JsonPropertyName("SmoothFactor")]
     public float SmoothFactor { get; set; } = 0.5f;
 
-    // Açıklama alanı (JSON yorum yerine)
-    [JsonPropertyName("_comment")]
-    public string Comment { get; set; } = "Smooth Aim ayarlari: 0.0 = cok yavas, 1.0 = aninda snap, default 0.5";
+    [JsonPropertyName("FOV")]
+    public float FOV { get; set; } = 360.0f;
+
+    [JsonPropertyName("MaxDistance")]
+    public float MaxDistance { get; set; } = 5000.0f;
+
+    [JsonPropertyName("BreakLimit")]
+    // DİKKAT: Artık derece değil, Mouse Hareketi (Mickeys) kullanıyoruz.
+    // 5.0 = Çok hassas (Hafif dokunuş)
+    // 10.0 - 15.0 = Normal (Bilinçli çevirme)
+    // 30.0+ = Sert çevirme
+    public float BreakLimit { get; set; } = 10.0f;
+
+    [JsonPropertyName("BreakCooldown")]
+    public float BreakCooldown { get; set; } = 1.0f; // Kırılınca 1 saniye beklesin
 }
 
 [MinimumApiVersion(80)]
 public class AimbotPlugin : BasePlugin
 {
     public override string ModuleName => "Admin Aimbot Snap Pro";
-    public override string ModuleVersion => "1.4.1";
+    public override string ModuleVersion => "2.2.0 (Mouse Delta)";
     public override string ModuleAuthor => "guccukCENEVAR";
 
-    private HashSet<ulong> _authorizedPlayers = new HashSet<ulong>();
+    // Debug açık kalsın, ayar yaptıktan sonra false yaparsın.
+    private const bool DebugMode = true; 
 
-    private const float FOV = 360.0f; 
+    private HashSet<ulong> _authorizedPlayers = new HashSet<ulong>();
+    private Dictionary<ulong, float> _aimbotBreakCooldown = new Dictionary<ulong, float>(); 
+    
+    // Mouse hareketini takip etmek için önceki EyeAngles'ı sakla
+    private Dictionary<ulong, QAngle> _previousAngles = new Dictionary<ulong, QAngle>();
+
+    // Artık son açıyı saklamamıza gerek yok çünkü direkt mouse hareketine bakacağız.
+
+    // FOV ve MaxDistance artık config'ten okunuyor
+    private float GetFOV() => _config?.FOV ?? 360.0f;
+    private float GetMaxDistance() => _config?.MaxDistance ?? 5000.0f;
+    
     private const float StandEyeHeight = 64.0f; 
     private const float CrouchEyeHeight = 46.0f;
     private const float StandHeadHeight = 65.0f; 
@@ -53,7 +78,20 @@ public class AimbotPlugin : BasePlugin
         {
             try
             {
-                string json = File.ReadAllText(configPath);
+                string jsonWithComments = File.ReadAllText(configPath);
+                // JSON yorumlarını filtrele (// ile başlayan satırları kaldır)
+                var lines = jsonWithComments.Split('\n');
+                var jsonLines = new List<string>();
+                foreach (var line in lines)
+                {
+                    var trimmed = line.TrimStart();
+                    // Yorum satırını atla (// ile başlayan)
+                    if (!trimmed.StartsWith("//"))
+                    {
+                        jsonLines.Add(line);
+                    }
+                }
+                string json = string.Join("\n", jsonLines);
                 _config = JsonSerializer.Deserialize<AimbotConfig>(json);
                 
                 if (_config == null)
@@ -77,11 +115,26 @@ public class AimbotPlugin : BasePlugin
         // SmoothFactor değerini kontrol et ve sınırla
         if (_config.SmoothFactor < 0.0f) _config.SmoothFactor = 0.0f;
         if (_config.SmoothFactor > 1.0f) _config.SmoothFactor = 1.0f;
+        
+        // FOV değerini kontrol et ve sınırla (0-360 arası)
+        if (_config.FOV < 0.0f) _config.FOV = 0.0f;
+        if (_config.FOV > 360.0f) _config.FOV = 360.0f;
+        
+        // MaxDistance değerini kontrol et (minimum 100)
+        if (_config.MaxDistance < 100.0f) _config.MaxDistance = 100.0f;
+        
+        if (_config.SmoothFactor < 0.0f) _config.SmoothFactor = 0.0f;
+        // Limit kontrolü (Mouse Delta için minimum 1.0 olsun)
+        if (_config.BreakLimit < 1.0f) _config.BreakLimit = 1.0f;
+
+        // BreakCooldown değerini kontrol et ve sınırla (0.1-5.0 arası)
+        if (_config.BreakCooldown < 0.1f) _config.BreakCooldown = 0.1f;
+        if (_config.BreakCooldown > 5.0f) _config.BreakCooldown = 5.0f;
 
         RegisterListener<Listeners.OnTick>(OnTick);
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
-
-        Console.WriteLine($"[Aimbot] V1.4.0 - Smooth Aim (Factor: {_config.SmoothFactor}) + Speed Preserve + Wall Check + Prediction!");
+        
+        Console.WriteLine($"[Aimbot] V2.2.0 Yuklendi. BreakLimit (MouseDelta): {_config.BreakLimit}");
     }
 
     private string GetConfigPath()
@@ -97,9 +150,27 @@ public class AimbotPlugin : BasePlugin
         try
         {
             var configPath = GetConfigPath();
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            string json = JsonSerializer.Serialize(_config, options);
-            File.WriteAllText(configPath, json);
+            
+            // JSON'u manuel olarak formatla - her property'nin altına açıklama ekle
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("{");
+            sb.AppendLine($"  \"SmoothFactor\": {_config.SmoothFactor.ToString(System.Globalization.CultureInfo.InvariantCulture)},");
+            sb.AppendLine("  // SmoothFactor: Aimbot yumuşaklık faktörü (0.0 = çok yavaş, 1.0 = anında snap), varsayılan 0.5");
+            sb.AppendLine();
+            sb.AppendLine($"  \"FOV\": {_config.FOV.ToString(System.Globalization.CultureInfo.InvariantCulture)},");
+            sb.AppendLine("  // FOV: Görüş açısı (derece), 0-360 arası, varsayılan 360 (tüm yönler)");
+            sb.AppendLine();
+            sb.AppendLine($"  \"MaxDistance\": {_config.MaxDistance.ToString(System.Globalization.CultureInfo.InvariantCulture)},");
+            sb.AppendLine("  // MaxDistance: Maksimum hedef algılama mesafesi (unit), minimum 100, varsayılan 5000");
+            sb.AppendLine();
+             sb.AppendLine($"  \"BreakLimit\": {_config.BreakLimit.ToString(System.Globalization.CultureInfo.InvariantCulture)},");
+             sb.AppendLine("  // BreakLimit: Mouse ile aim bozma limiti. 0.5 - 1.0 arasi idealdir.");
+            sb.AppendLine();
+            sb.AppendLine($"  \"BreakCooldown\": {_config.BreakCooldown.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+             sb.AppendLine("  // BreakCooldown: Kilit kırıldığında aimbot'un ne kadar süre durdurulacağı (saniye), varsayılan 1.0");
+            sb.AppendLine("}");
+            
+            File.WriteAllText(configPath, sb.ToString());
             Console.WriteLine($"[Aimbot] Config dosyasi olusturuldu: {configPath}");
         }
         catch (Exception ex)
@@ -107,6 +178,7 @@ public class AimbotPlugin : BasePlugin
             Console.WriteLine($"[Aimbot] Config kaydedilirken hata: {ex.Message}");
         }
     }
+
 
     [ConsoleCommand("css_aim", "Aimbot ac/kapat")]
     public void OnAimCommand(CCSPlayerController? player, CommandInfo commandInfo)
@@ -124,125 +196,143 @@ public class AimbotPlugin : BasePlugin
         if (_authorizedPlayers.Contains(player.SteamID))
         {
             _authorizedPlayers.Remove(player.SteamID);
-            player.PrintToChat(" \x01[\x02Admin\x01] Aim Assist: \x02KAPALI \x08(by guccukCENEVAR)");
+            _previousAngles.Remove(player.SteamID); // Hafızayı temizle
+            player.PrintToChat(" \x01[\x02Admin\x01] Aim Assist: \x02KAPALI");
         }
         else
         {
             _authorizedPlayers.Add(player.SteamID);
-            player.PrintToChat(" \x01[\x02Admin\x01] Aim Assist: \x04ACIK \x08(by guccukCENEVAR)");
-
+            player.PrintToChat(" \x01[\x02Admin\x01] Aim Assist: \x04ACIK");
         }
     }
 
     private void OnTick()
     {
+        float currentTime = Server.CurrentTime;
+        
         foreach (var player in Utilities.GetPlayers())
         {
-            // Temel kontroller ve yetki kontrolü
+            // 1. Temel Kontroller
             if (player == null || !player.IsValid || player.PawnIsAlive != true || !_authorizedPlayers.Contains(player.SteamID))
+            {
+                _previousAngles.Remove(player.SteamID);
+                _aimbotBreakCooldown.Remove(player.SteamID);
                 continue;
+            }
 
             var playerPawn = player.PlayerPawn.Value;
             if (playerPawn == null || playerPawn.AbsOrigin == null) continue;
 
-            // --- NO RECOIL (SEKMEME) ---
-            // Silahın geri tepme açısını (Punch Angle) sıfırlıyoruz
-            playerPawn.AimPunchAngle.X = 0;
-            playerPawn.AimPunchAngle.Y = 0;
-            playerPawn.AimPunchAngle.Z = 0;
+            // 2. Silah Kontrolü (Bıçak/Bomba vb.)
+            var activeWeapon = playerPawn.WeaponServices?.ActiveWeapon.Value;
+            if (activeWeapon != null && IsIgnoredWeapon(activeWeapon.DesignerName ?? ""))
+            {
+                _previousAngles.Remove(player.SteamID);
+                continue;
+            }
 
-            // Geri tepme hızını (Punch Angle Velocity) sıfırlıyoruz
-            // Bu, namlunun yukarı sektiğinde geri gelme efektini de iptal eder
-            playerPawn.AimPunchAngleVel.X = 0;
-            playerPawn.AimPunchAngleVel.Y = 0;
-            playerPawn.AimPunchAngleVel.Z = 0;
-            // ------------------------------------------------
+            // 3. Cooldown Kontrolü
+            if (_aimbotBreakCooldown.TryGetValue(player.SteamID, out float cooldownEndTime))
+            {
+                if (currentTime < cooldownEndTime)
+                {
+                    _previousAngles.Remove(player.SteamID);
+                    // Debug: Kırık olduğunu göster
+                    if (DebugMode) player.PrintToCenterHtml($"<font color='red'>KILIT KIRIK! Bekleniyor...</font>");
+                    continue; // Cooldown bitene kadar elleme
+                }
+                else
+                {
+                    _aimbotBreakCooldown.Remove(player.SteamID);
+                }
+            }
 
-            // --- MEVCUT AIMBOT MANTIĞI ---
+            // 4. Mouse Hareketi Hesaplama (MouseX/MouseY alternatifi)
+            // OnTick içinde MouseX/MouseY'ye direkt erişim yok, bu yüzden EyeAngles değişimini kullanıyoruz
+            QAngle currentAngles = playerPawn.EyeAngles ?? new QAngle(0, 0, 0);
+            
+            // Önceki açıyı al ve mouse hareketini hesapla
+            float mouseMovement = 0.0f;
+            if (_previousAngles.TryGetValue(player.SteamID, out QAngle previousAngles))
+            {
+                // Açı farkını hesapla (mouse hareketinin bir göstergesi)
+                float diffX = GetAngleDiff(currentAngles.X, previousAngles.X);
+                float diffY = GetAngleDiff(currentAngles.Y, previousAngles.Y);
+                // Mouse hareket gücü = açı değişimi (basitleştirilmiş)
+                mouseMovement = diffX + diffY;
+            }
+            
+            // Şu anki açıyı kaydet (bir sonraki tick için)
+            _previousAngles[player.SteamID] = currentAngles;
+
+            // 5. Hedef Bulma
             var target = GetBestTarget(player);
-            if (target == null || target.PlayerPawn.Value == null) continue;
+            if (target == null || target.PlayerPawn.Value == null)
+            {
+                _previousAngles.Remove(player.SteamID);
+                if (DebugMode) player.PrintToCenter("Hedef Yok");
+                continue;
+            }
 
+            // --- Recoil (AimPunch) Sıfırlama ---
+            if (playerPawn.AimPunchAngle != null) { playerPawn.AimPunchAngle.X = 0; playerPawn.AimPunchAngle.Y = 0; playerPawn.AimPunchAngle.Z = 0; }
+            if (playerPawn.AimPunchAngleVel != null) { playerPawn.AimPunchAngleVel.X = 0; playerPawn.AimPunchAngleVel.Y = 0; playerPawn.AimPunchAngleVel.Z = 0; }
+
+            // 6. Hedef Açı Hesaplama
             float currentEyeHeight = (playerPawn.Flags & (uint)PlayerFlags.FL_DUCKING) != 0 ? CrouchEyeHeight : StandEyeHeight;
             Vector eyePos = new Vector(playerPawn.AbsOrigin.X, playerPawn.AbsOrigin.Y, playerPawn.AbsOrigin.Z + currentEyeHeight);
-
+            
             var targetPawn = target.PlayerPawn.Value;
             float currentTargetHeadHeight = (targetPawn.Flags & (uint)PlayerFlags.FL_DUCKING) != 0 ? CrouchHeadHeight : StandHeadHeight;
             
-            // Hareket tahminleme (Prediction)
             Vector velocity = targetPawn.AbsVelocity ?? new Vector(0,0,0);
-            Vector predictedOrigin = new Vector(
-                targetPawn.AbsOrigin!.X + (velocity.X * PredictionFactor),
-                targetPawn.AbsOrigin.Y + (velocity.Y * PredictionFactor),
-                targetPawn.AbsOrigin.Z + (velocity.Z * PredictionFactor)
+            Vector targetPos = targetPawn.AbsOrigin!;
+            Vector predictedPos = new Vector(
+                targetPos.X + (velocity.X * PredictionFactor),
+                targetPos.Y + (velocity.Y * PredictionFactor),
+                targetPos.Z + (velocity.Z * PredictionFactor)
             );
-
-            Vector targetHeadBase = new Vector(predictedOrigin.X, predictedOrigin.Y, predictedOrigin.Z + currentTargetHeadHeight);
-
-            // Face-focus
+            
+            Vector targetHead = new Vector(predictedPos.X, predictedPos.Y, predictedPos.Z + currentTargetHeadHeight);
             Vector enemyForward = AngleToForward(targetPawn.EyeAngles);
-            Vector targetHeadFinal = targetHeadBase + (enemyForward * 4.0f);
+            Vector targetHeadFinal = targetHead + (enemyForward * 4.0f);
 
             QAngle targetAngle = CalculateAngle(eyePos, targetHeadFinal);
-            
-            // Mevcut açıyı al
-            QAngle currentAngle = playerPawn.EyeAngles ?? new QAngle(0, 0, 0);
-            
-            // Smooth interpolasyon
-            float smoothFactor = _config?.SmoothFactor ?? 0.5f;
-            QAngle smoothAngle = LerpAngle(currentAngle, targetAngle, smoothFactor);
-            
-            // View angle'ı değiştir
-            SetViewAngle(playerPawn, smoothAngle, player);
-        }
-    }
 
-    /// <summary>
-    /// Oyuncunun view angle'ını değiştirir
-    /// Mevcut pozisyon ve velocity korunarak sadece açı değiştirilir
-    /// SetSpeed ile ayarlanan hız da korunur
-    /// AimPunchAngle ve AimPunchAngleVel telafi edilir (no-recoil)
-    /// </summary>
-    private void SetViewAngle(CCSPlayerPawn playerPawn, QAngle angle, CCSPlayerController? controller = null)
-    {
-        if (playerPawn == null || !playerPawn.IsValid) return;
-        if (playerPawn.AbsOrigin == null || playerPawn.AbsVelocity == null) return;
+            // --- 7. KİLİT KIRMA (RAW MOUSE INPUT) ---
+            // Mouse hareket gücünü kontrol et
+            float limit = _config?.BreakLimit ?? 10.0f;
 
-        // *** HIZ KORUMA ***
-        // Teleport öncesi velocity'yi kaydet
-        var savedVelocity = playerPawn.AbsVelocity;
-        float savedVelX = savedVelocity.X;
-        float savedVelY = savedVelocity.Y;
-        float savedVelZ = savedVelocity.Z;
-        
-        // Mevcut hız büyüklüğünü hesapla (yatay düzlem)
-        float currentSpeed = MathF.Sqrt(savedVelX * savedVelX + savedVelY * savedVelY);
-        
-        // Pozisyonu ve velocity'yi kopyala
-        Vector pos = new Vector(playerPawn.AbsOrigin.X, playerPawn.AbsOrigin.Y, playerPawn.AbsOrigin.Z);
-        Vector vel = new Vector(savedVelX, savedVelY, savedVelZ);
-        
-        // Teleport yap - sadece açı değişir
-        playerPawn.Teleport(pos, angle, vel);
-        
-        // Teleport sonrası velocity'yi kontrol et ve gerekirse düzelt
-        if (playerPawn.AbsVelocity != null && currentSpeed > 0)
-        {
-            var newVelocity = playerPawn.AbsVelocity;
-            float newSpeed = MathF.Sqrt(newVelocity.X * newVelocity.X + newVelocity.Y * newVelocity.Y);
-            
-            // Eğer hız değiştiyse, eski hızı geri yükle
-            if (MathF.Abs(newSpeed - currentSpeed) > 1.0f)
+            // DEBUG: Ekrana mouse hareket gücünü yaz
+            if (DebugMode)
             {
-                // Yeni yöne eski hızı uygula
-                if (newSpeed > 0)
-                {
-                    float ratio = currentSpeed / newSpeed;
-                    newVelocity.X *= ratio;
-                    newVelocity.Y *= ratio;
-                }
+                string color = mouseMovement > limit ? "green" : "red";
+                player.PrintToCenterHtml($"Mouse Power: <font color='{color}'>{mouseMovement:F1}</font> | Limit: {limit:F1}");
             }
+
+            // Eğer mouse hareketi limiti geçerse kilit kırılır
+            if (mouseMovement > limit)
+            {
+                float cdTime = _config?.BreakCooldown ?? 1.0f;
+                _aimbotBreakCooldown[player.SteamID] = currentTime + cdTime;
+                _previousAngles.Remove(player.SteamID); // Önceki açıyı temizle
+                // Aimbot uygulamasını atla (continue)
+                continue;
+            }
+
+            // --- 8. AÇIYI UYGULA ---
+            float smoothFactor = _config?.SmoothFactor ?? 0.5f;
+            // Lerp işlemini mevcut açı üzerinden yapıyoruz
+            QAngle finalAngle = LerpAngle(currentAngles, targetAngle, smoothFactor);
+            
+            // Teleport ile açıyı uygula
+            playerPawn.Teleport(playerPawn.AbsOrigin!, finalAngle, playerPawn.AbsVelocity!);
+            
+            // Uyguladığımız açıyı kaydet (mouse hareketi hesaplaması için)
+            _previousAngles[player.SteamID] = finalAngle;
         }
     }
+
 
     /// <summary>
     /// RayTrace kullanarak duvar kontrolü yapar
@@ -357,7 +447,8 @@ public class AimbotPlugin : BasePlugin
             );
 
             float dist = GetDistance(eyePos, enemyHead);
-            if (dist > 5000.0f) continue;
+            float maxDist = GetMaxDistance();
+            if (dist > maxDist) continue;
 
             // *** DUVAR KONTROLÜ - RAY TRACING ***
             if (IsWallBetween(player, enemy))
@@ -370,7 +461,11 @@ public class AimbotPlugin : BasePlugin
             float dotProduct = Dot(forward, dir);
             float angle = MathF.Acos(Math.Clamp(dotProduct, -1.0f, 1.0f)) * (180.0f / MathF.PI);
             
-            float score = angle + (dist / 5000.0f);
+            // FOV kontrolü - eğer açı FOV dışındaysa hedefi atla
+            float fov = GetFOV();
+            if (angle > fov / 2.0f) continue;
+            
+            float score = angle + (dist / GetMaxDistance());
 
             if (score < bestScore)
             {
@@ -407,10 +502,36 @@ public class AimbotPlugin : BasePlugin
     private Vector Normalize(Vector v) 
     {
         float l = MathF.Sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z);
-        return l > 0 ? new Vector(v.X / l, v.Y / l, v.Z / l) : new Vector(0,0,0);
+        return l > 0 ? new Vector(v.X / l, v.Y / l, v.Z / l) : new Vector(0,0,1);
     }
 
     private float Dot(Vector a, Vector b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+
+    // --- YARDIMCI VEKTÖR MATEMATİĞİ ---
+
+    private Vector GetForwardVector(QAngle angles)
+    {
+        // Dereceyi radyana çevir
+        float pitch = angles.X * (MathF.PI / 180.0f);
+        float yaw = angles.Y * (MathF.PI / 180.0f);
+        
+        // Spherical to Cartesian
+        float cp = MathF.Cos(pitch);
+        float sp = MathF.Sin(pitch);
+        float cy = MathF.Cos(yaw);
+        float sy = MathF.Sin(yaw);
+        
+        return new Vector(cp * cy, cp * sy, -sp);
+    }
+
+    private Vector VectorCrossProduct(Vector a, Vector b)
+    {
+        return new Vector(
+            a.Y * b.Z - a.Z * b.Y,
+            a.Z * b.X - a.X * b.Z,
+            a.X * b.Y - a.Y * b.X
+        );
+    }
 
     /// <summary>
     /// İki açı arasında smooth interpolasyon yapar
@@ -448,9 +569,48 @@ public class AimbotPlugin : BasePlugin
         return from + diff * t;
     }
 
+    // --- YENİ YARDIMCI METOT ---
+    private bool IsIgnoredWeapon(string weaponName)
+    {
+        if (string.IsNullOrEmpty(weaponName)) return false;
+        string name = weaponName.ToLower();
+
+        // Bıçaklar
+        if (name.Contains("knife") || name.Contains("bayonet")) return true;
+        // Bombalar
+        if (name.Contains("grenade") || name.Contains("flash") || name.Contains("smoke") || 
+            name.Contains("molotov") || name.Contains("incgrenade") || name.Contains("decoy")) return true;
+        // Zeus
+        if (name.Contains("taser")) return true;
+        // C4
+        if (name.Contains("c4")) return true;
+
+        return false;
+    }
+
+    private float GetAngleDiff(float angle1, float angle2)
+    {
+        float diff = MathF.Abs(angle1 - angle2);
+        if (diff > 180.0f) diff = 360.0f - diff;
+        return diff;
+    }
+
     private HookResult OnPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo info)
     {
-        if (@event.Userid != null) _authorizedPlayers.Remove(@event.Userid.SteamID);
+        if (@event.Userid != null)
+        {
+            _authorizedPlayers.Remove(@event.Userid.SteamID);
+            _previousAngles.Remove(@event.Userid.SteamID);
+            _aimbotBreakCooldown.Remove(@event.Userid.SteamID);
+        }
         return HookResult.Continue;
+    }
+
+    public override void Unload(bool hotReload)
+    {
+        _authorizedPlayers.Clear();
+        _previousAngles.Clear();
+        _aimbotBreakCooldown.Clear();
+        base.Unload(hotReload);
     }
 }
