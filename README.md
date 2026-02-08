@@ -7,6 +7,7 @@ Counter-Strike 2 sunucuları için gelişmiş admin aim assist eklentisi.
 - **SnapViewAngles** - Engine'in bot bakış açısı fonksiyonunu kullanır. Teleport'a göre model glitch oluşmaz. Yüklenemezse otomatik Teleport fallback'e döner.
 - **Duvar Kontrolü (FUNPLAY Ray-Trace)** - Engine seviyesinde ray tracing ile hedefle arada gerçek duvar varsa kilitleme yapmaz.
 - **Hareket Tahminleme** - Hedefin hızını analiz ederek 64 tick hızına göre bir sonraki konumunu tahmin eder.
+  //hareket tahminleme stok olarak kapalı
 - **Akıllı Hedef Seçimi** - Bakış açısına (FOV) en yakın ve en kısa mesafedeki düşmanı seçen skorlama algoritması.
 - **Çoklu Nokta Trace** - Baş, gövde ve bel olmak üzere 3 farklı noktaya ışın göndererek hedef görünürlüğünü doğrular.
 - **Smooth Aim** - Yapılandırılabilir yumuşaklık faktörü ile hedefe doğal geçiş. Dik açılarda otomatik hızlanma.
