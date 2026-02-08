@@ -6,6 +6,7 @@ using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using RayTrace;
@@ -35,10 +36,12 @@ public class AimbotPlugin : BasePlugin
     private Dictionary<ulong, QAngle> _lastAimAngles = new Dictionary<ulong, QAngle>();
     
     // CCSBot::SnapViewAngles - Engine'in bot bakış açısı fonksiyonu
-    // Teleport yerine kullanılır: sadece view angle değişir, model glitch yok
-    // Kaynak: https://github.com/leopaulgg/CS2-Aimbot
     private MemoryFunctionVoid<CCSPlayerPawn, QAngle>? _snapViewAngles;
     private bool _snapViewAnglesLoaded = false;
+    
+    // Debug modu
+    private HashSet<ulong> _debugPlayers = new HashSet<ulong>();
+    private int _debugTickCounter = 0;
 
     private float GetFOV() => _config?.FOV ?? 360.0f;
     private float GetMaxDistance() => _config?.MaxDistance ?? 5000.0f;
@@ -52,15 +55,21 @@ public class AimbotPlugin : BasePlugin
     {
         LoadConfig();
 
+        string platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "Windows" : "Linux";
+        Console.WriteLine($"[Aimbot] Platform: {platform}");
+
         // SnapViewAngles yükle
         try
         {
             _snapViewAngles = new MemoryFunctionVoid<CCSPlayerPawn, QAngle>(GameData.GetSignature("CCSBot_SnapViewAngles"));
             _snapViewAnglesLoaded = true;
+            Console.WriteLine($"[Aimbot] SnapViewAngles: YUKLENDI");
         }
-        catch
+        catch (Exception ex)
         {
             _snapViewAnglesLoaded = false;
+            Console.WriteLine($"[Aimbot] SnapViewAngles: BASARISIZ - {ex.Message}");
+            Console.WriteLine($"[Aimbot] Teleport fallback kullanilacak");
         }
 
         RegisterListener<Listeners.OnTick>(OnTick);
@@ -70,13 +79,15 @@ public class AimbotPlugin : BasePlugin
     }
 
     // ============================================================
-    // OnTick - Aim mantığı (Teleport yöntemi)
+    // OnTick - Aim mantığı
     // ============================================================
     private void OnTick()
     {
         // RayTrace lazy init
         if (!RayTrace.RayTrace.IsInitialized)
             RayTrace.RayTrace.Initialize();
+
+        _debugTickCounter++;
 
         foreach (var player in Utilities.GetPlayers())
         {
@@ -86,15 +97,51 @@ public class AimbotPlugin : BasePlugin
             var playerPawn = player.PlayerPawn.Value;
             if (playerPawn == null || playerPawn.AbsOrigin == null) continue;
 
+            bool showDebug = _debugPlayers.Contains(player.SteamID) && (_debugTickCounter % 64 == 0);
+
             // Silah kontrolü
             var activeWeapon = playerPawn.WeaponServices?.ActiveWeapon.Value;
             if (activeWeapon != null && IsIgnoredWeapon(activeWeapon.DesignerName ?? ""))
+            {
+                if (showDebug) player.PrintToChat($" \x02[D] Silah ignored: {activeWeapon.DesignerName}");
                 continue;
+            }
 
             // Hedef bul
             var target = GetBestTarget(player);
             if (target == null || target.PlayerPawn.Value == null)
+            {
+                if (showDebug)
+                {
+                    // Neden hedef bulunamadığını göster
+                    int enemyCount = 0, wallBlocked = 0, fovBlocked = 0, distBlocked = 0;
+                    int myTeam = player.TeamNum;
+                    float myEyeZDbg = (playerPawn.Flags & (uint)PlayerFlags.FL_DUCKING) != 0 ? 46.0f : 64.0f;
+                    Vector eyePosDbg = new Vector(playerPawn.AbsOrigin.X, playerPawn.AbsOrigin.Y, playerPawn.AbsOrigin.Z + myEyeZDbg);
+                    QAngle curDbg = playerPawn.V_angle ?? playerPawn.EyeAngles ?? new QAngle(0, 0, 0);
+                    Vector fwdDbg = AngleToForward(curDbg);
+                    
+                    foreach (var e in Utilities.GetPlayers().Where(p => p.IsValid && p.PawnIsAlive && p.TeamNum != myTeam))
+                    {
+                        var ep = e.PlayerPawn.Value;
+                        if (ep?.AbsOrigin == null) continue;
+                        enemyCount++;
+                        float eez = ep.ViewOffset.Z; if (eez < 30f) eez = 64f;
+                        Vector eh = new Vector(ep.AbsOrigin.X, ep.AbsOrigin.Y, ep.AbsOrigin.Z + eez);
+                        float dist = GetDistance(eyePosDbg, eh);
+                        if (dist > GetMaxDistance()) { distBlocked++; continue; }
+                        if (IsWallBetween(player, e)) { wallBlocked++; continue; }
+                        Vector dir = Normalize(eh - eyePosDbg);
+                        float dot = Dot(fwdDbg, dir);
+                        float ang = MathF.Acos(Math.Clamp(dot, -1f, 1f)) * (180f / MathF.PI);
+                        if (ang > GetFOV() / 2f) { fovBlocked++; }
+                    }
+                    player.PrintToChat($" \x02[D] Hedef yok! Dusman:{enemyCount} Duvar:{wallBlocked} FOV:{fovBlocked} Dist:{distBlocked}");
+                }
                 continue;
+            }
+
+            if (showDebug) player.PrintToChat($" \x04[D] Hedef: {target.PlayerName}");
 
             // Recoil + Spread sıfırlama
             if (playerPawn.AimPunchAngle != null) { playerPawn.AimPunchAngle.X = 0; playerPawn.AimPunchAngle.Y = 0; playerPawn.AimPunchAngle.Z = 0; }
@@ -102,7 +149,7 @@ public class AimbotPlugin : BasePlugin
             playerPawn.AimPunchTickBase = -1;
             playerPawn.AimPunchTickFraction = 0;
 
-            // Silah yayılımını (accuracy penalty) sıfırla - sağ/sol sekmeyi engeller
+            // Silah yayılımını (accuracy penalty) sıfırla
             var weapon = playerPawn.WeaponServices?.ActiveWeapon?.Value;
             if (weapon != null)
             {
@@ -118,7 +165,7 @@ public class AimbotPlugin : BasePlugin
             else
                 currentAngles = playerPawn.V_angle ?? playerPawn.EyeAngles ?? new QAngle(0, 0, 0);
 
-            // Göz pozisyonu (sabit yükseklik)
+            // Göz pozisyonu
             float myEyeZ = (playerPawn.Flags & (uint)PlayerFlags.FL_DUCKING) != 0 ? 46.0f : 64.0f;
             Vector eyePos = new Vector(playerPawn.AbsOrigin.X, playerPawn.AbsOrigin.Y, playerPawn.AbsOrigin.Z + myEyeZ);
 
@@ -148,15 +195,26 @@ public class AimbotPlugin : BasePlugin
             // Açı uygula
             if (_snapViewAnglesLoaded && _snapViewAngles != null)
             {
-                // SnapViewAngles: engine'in bot fonksiyonu, model glitch yok
-                _snapViewAngles.Invoke(playerPawn, finalAngle);
+                try
+                {
+                    _snapViewAngles.Invoke(playerPawn, finalAngle);
+                    if (showDebug) player.PrintToChat($" \x04[D] SnapViewAngles OK p:{finalAngle.X:F1} y:{finalAngle.Y:F1}");
+                }
+                catch (Exception ex)
+                {
+                    // SnapViewAngles çalışmıyorsa Teleport'a düş
+                    if (showDebug) player.PrintToChat($" \x02[D] SnapViewAngles HATA: {ex.Message}");
+                    playerPawn.Teleport(playerPawn.AbsOrigin!, finalAngle, playerPawn.AbsVelocity!);
+                    if (playerPawn.AbsRotation != null)
+                        playerPawn.AbsRotation.X = 0;
+                }
             }
             else
             {
-                // Fallback: Teleport (model glitch olabilir)
                 playerPawn.Teleport(playerPawn.AbsOrigin!, finalAngle, playerPawn.AbsVelocity!);
                 if (playerPawn.AbsRotation != null)
                     playerPawn.AbsRotation.X = 0;
+                if (showDebug) player.PrintToChat($" \x04[D] Teleport p:{finalAngle.X:F1} y:{finalAngle.Y:F1}");
             }
 
             _lastAimAngles[player.SteamID] = new QAngle(finalAngle.X, finalAngle.Y, 0);
@@ -165,14 +223,78 @@ public class AimbotPlugin : BasePlugin
 
     // ============================================================
     // Duvar Kontrolü
+    // InteractsExclude=0 kullanıyoruz (resmi FUNPLAY API uyumlu)
+    // Trace her şeye çarpar, filtreleme C# tarafında yapılır
     // ============================================================
+    
+    
+    // Bilinen duvar entity'leri (sadece bunlar duvar sayılır)
+    private static bool IsWallEntity(string name)
+    {
+        // Dünya geometrisi
+        if (name.StartsWith("worldent", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.StartsWith("world", StringComparison.OrdinalIgnoreCase)) return true;
+        // Brush entity'ler
+        if (name.StartsWith("func_wall", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.StartsWith("func_brush", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.StartsWith("func_breakable", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.StartsWith("func_door", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.StartsWith("func_rotating", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.StartsWith("func_lod", StringComparison.OrdinalIgnoreCase)) return true;
+        // Statik prop'lar (duvar gibi davranır)
+        if (name.StartsWith("prop_static", StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+    
+    
+    /// <summary>
+    /// Tek bir ışın trace'i yapar ve sonucun duvar olup olmadığını döndürür.
+    /// true = duvar var, false = duvar yok (yol açık)
+    /// 
+    /// Strateji: Sadece BILINEN duvar entity'leri "duvar" sayılır.
+    /// Bilinmeyen her şey "duvar değil" olarak geçer (güvenli taraf).
+    /// </summary>
     private bool SingleTrace(Vector from, Vector to, IntPtr skipHandle)
     {
         if (!RayTrace.RayTrace.TraceWall(from, to, skipHandle, out var result))
-            return false;
+            return false; // Trace başarısız = duvar yok say
 
+        // AllSolid: başlangıç noktası katı içinde
         if (result.IsAllSolid) return false;
-        return result.Fraction < 0.97f;
+        
+        // Fraction >= 0.97 = hedefe neredeyse ulaştı, engel yok
+        if (result.Fraction >= 0.97f) return false;
+        
+        // Fraction < 0.97 = bir şeye çarptı
+        
+        // HitEntity sıfırsa → dünya geometrisi (brush/worldspawn) → DUVAR
+        if (result.HitEntity == nint.Zero)
+            return true;
+        
+        // HitEntity varsa → entity tipine bak
+        try
+        {
+            var hitEnt = new CEntityInstance(result.HitEntity);
+            if (hitEnt == null || !hitEnt.IsValid)
+                return false; // Geçersiz entity → duvar değil say
+            
+            string name = hitEnt.DesignerName ?? "";
+            
+            // Boş isim → muhtemelen dünya geometrisi → DUVAR
+            if (string.IsNullOrEmpty(name))
+                return true;
+            
+            // Sadece bilinen duvar entity'leri → DUVAR
+            if (IsWallEntity(name))
+                return true;
+            
+            // Geri kalan HER ŞEY → DUVAR DEĞİL (oyuncu, trigger, prop, silah, vs)
+            return false;
+        }
+        catch 
+        { 
+            return false; // Exception → duvar değil say
+        }
     }
 
     private bool IsWallBetween(CCSPlayerController player, CCSPlayerController target)
@@ -205,6 +327,7 @@ public class AimbotPlugin : BasePlugin
         try
         {
             // 3 noktaya trace: baş, gövde, bel
+            // Herhangi biri açıksa → hedef görünür
             Vector headPos = new Vector(tx, ty, tz + targetEyeZ);
             if (!SingleTrace(startPos, headPos, skipHandle))
                 return false;
@@ -217,7 +340,7 @@ public class AimbotPlugin : BasePlugin
             if (!SingleTrace(startPos, waistPos, skipHandle))
                 return false;
 
-            return true;
+            return true; // 3 trace de duvar → hedef görünmüyor
         }
         catch { return false; }
     }
@@ -310,11 +433,165 @@ public class AimbotPlugin : BasePlugin
             catch { hitEntity = "err"; }
         }
 
-        player.PrintToChat($" \x04--- TRACE SONUCLARI ---");
+        string platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "WIN" : "LNX";
+        player.PrintToChat($" \x04--- TRACE SONUCLARI [{platform}] ---");
         player.PrintToChat($" \x01Fraction: \x04{(ok ? r.Fraction.ToString("F4") : "HATA")}");
         player.PrintToChat($" \x01Hit Entity: \x04{hitEntity}");
         player.PrintToChat($" \x01AllSolid: \x04{(ok ? r.IsAllSolid.ToString() : "-")}");
+        if (ok) player.PrintToChat($" \x01EndPos: \x04{r.EndPosX:F0},{r.EndPosY:F0},{r.EndPosZ:F0}");
         player.PrintToChat($" \x01Frac < 1.0 = \x02duvar \x01| >= 1.0 = \x04serbest");
+    }
+
+    [ConsoleCommand("css_traceenemy", "En yakin dusmana trace yap - debug")]
+    public void OnTraceEnemyCommand(CCSPlayerController? player, CommandInfo commandInfo)
+    {
+        if (player == null || !player.IsValid) return;
+        var pawn = player.PlayerPawn.Value;
+        if (pawn?.AbsOrigin == null) return;
+
+        if (!RayTrace.RayTrace.IsInitialized)
+        {
+            player.PrintToChat($" \x02[Hata]\x01 RayTrace yuklu degil");
+            return;
+        }
+
+        float myEyeZ = (pawn.Flags & (uint)PlayerFlags.FL_DUCKING) != 0 ? 46.0f : 64.0f;
+        Vector eyePos = new Vector(pawn.AbsOrigin.X, pawn.AbsOrigin.Y, pawn.AbsOrigin.Z + myEyeZ);
+        int myTeam = player.TeamNum;
+
+        // En yakın düşmanı bul
+        CCSPlayerController? nearest = null;
+        float nearestDist = float.MaxValue;
+        foreach (var enemy in Utilities.GetPlayers().Where(p => p.IsValid && p.PawnIsAlive && p.TeamNum != myTeam))
+        {
+            var ep = enemy.PlayerPawn.Value;
+            if (ep?.AbsOrigin == null) continue;
+            float d = GetDistance(eyePos, ep.AbsOrigin);
+            if (d < nearestDist) { nearestDist = d; nearest = enemy; }
+        }
+
+        if (nearest == null)
+        {
+            player.PrintToChat($" \x02Dusman bulunamadi");
+            return;
+        }
+
+        var targetPawn = nearest.PlayerPawn.Value!;
+        float targetEyeZ = targetPawn.ViewOffset.Z;
+        if (targetEyeZ < 30.0f) targetEyeZ = 64.0f;
+        float tx = targetPawn.AbsOrigin!.X, ty = targetPawn.AbsOrigin.Y, tz = targetPawn.AbsOrigin.Z;
+
+        player.PrintToChat($" \x04=== TRACE TO ENEMY ({nearest.PlayerName}) ===");
+        player.PrintToChat($" \x01Mesafe: \x04{nearestDist:F0}\x01 birim");
+
+        // 3 trace: baş, gövde, bel
+        string[] labels = { "BAS", "GOVDE", "BEL" };
+        float[] multipliers = { 1.0f, 0.6f, 0.35f };
+
+        for (int i = 0; i < 3; i++)
+        {
+            Vector target = new Vector(tx, ty, tz + targetEyeZ * multipliers[i]);
+            
+            bool ok = RayTrace.RayTrace.TraceWall(eyePos, target, pawn.Handle, out var r);
+
+            string entName = "-";
+            if (ok && r.HitEntity != nint.Zero)
+            {
+                try
+                {
+                    var ent = new CEntityInstance(r.HitEntity);
+                    if (ent != null && ent.IsValid) entName = ent.DesignerName ?? "(bos)";
+                    else entName = "(gecersiz)";
+                }
+                catch { entName = "(err)"; }
+            }
+            else if (ok && r.HitEntity == nint.Zero && r.Fraction < 0.97f)
+            {
+                entName = "(worldspawn)";
+            }
+
+            string fracStr = ok ? r.Fraction.ToString("F3") : "FAIL";
+            bool isWall = ok && r.Fraction < 0.97f && (r.HitEntity == nint.Zero || IsWallEntity(entName));
+            string wallStr = isWall ? "\x02DUVAR" : "\x04ACIK";
+            
+            player.PrintToChat($" \x01{labels[i]}: frac=\x04{fracStr}\x01 ent=\x04{entName}\x01 → {wallStr}");
+        }
+
+        bool wallBetween = IsWallBetween(player, nearest);
+        player.PrintToChat($" \x01Sonuc: {(wallBetween ? "\x02DUVAR VAR - kilitlenmez" : "\x04YOL ACIK - kilitlenir")}");
+    }
+
+    [ConsoleCommand("css_tracediag", "RayTrace diagnostik - farkli maskeleri test eder")]
+    public void OnTraceDiagCommand(CCSPlayerController? player, CommandInfo commandInfo)
+    {
+        if (player == null || !player.IsValid) return;
+        var pawn = player.PlayerPawn.Value;
+        if (pawn?.AbsOrigin == null) return;
+
+        string platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "WIN" : "LNX";
+        player.PrintToChat($" \x04=== TRACE DIAGNOSTIK [{platform}] ===");
+
+        if (!RayTrace.RayTrace.IsInitialized)
+        {
+            player.PrintToChat($" \x02[Hata]\x01 RayTrace yuklu degil: {RayTrace.RayTrace.InitError ?? "?"}");
+            return;
+        }
+
+        Vector eyePos = new Vector(pawn.AbsOrigin.X, pawn.AbsOrigin.Y, pawn.AbsOrigin.Z + pawn.ViewOffset.Z);
+        Vector forward = new Vector();
+        var viewAngle = pawn.V_angle ?? pawn.EyeAngles;
+        NativeAPI.AngleVectors(viewAngle!.Handle, forward.Handle, 0, 0);
+        Vector endPos = new Vector(eyePos.X + forward.X * 3000, eyePos.Y + forward.Y * 3000, eyePos.Z + forward.Z * 3000);
+
+        // Test 1: MASK_SHOT_PHYSICS (resmi örnek)
+        TestMask(player, "SHOT_PHYS", (ulong)InteractionLayers.MASK_SHOT_PHYSICS, 0, eyePos, endPos, pawn.Handle);
+        
+        // Test 2: MASK_SHOT_FULL (hitbox dahil)
+        TestMask(player, "SHOT_FULL", (ulong)InteractionLayers.MASK_SHOT_FULL, 0, eyePos, endPos, pawn.Handle);
+        
+        // Test 3: Sadece Solid
+        TestMask(player, "SOLID", (ulong)InteractionLayers.Solid, 0, eyePos, endPos, pawn.Handle);
+        
+        // Test 4: Solid + WorldGeometry
+        TestMask(player, "SOLID+WG", (ulong)(InteractionLayers.Solid | InteractionLayers.WorldGeometry), 0, eyePos, endPos, pawn.Handle);
+        
+        // Test 5: Tüm katmanlar
+        TestMask(player, "ALL", 0xFFFFFFFFFFFFFFFF, 0, eyePos, endPos, pawn.Handle);
+    }
+
+    private unsafe void TestMask(CCSPlayerController player, string label, ulong interactsWith, ulong interactsExclude, Vector start, Vector end, IntPtr skipHandle)
+    {
+        var options = new TraceOptions
+        {
+            InteractsAs = 0,
+            InteractsWith = interactsWith,
+            InteractsExclude = interactsExclude,
+            DrawBeam = 0
+        };
+
+        CBaseEntity? skipEntity = null;
+        if (skipHandle != IntPtr.Zero)
+        {
+            try { skipEntity = new CBaseEntity(skipHandle); }
+            catch { }
+        }
+
+        bool ok = RayTrace.RayTrace.TraceEndShape(start, end, skipEntity, options, out var r);
+
+        string entityName = "-";
+        if (ok && r.DidHit && r.HitEntity != nint.Zero)
+        {
+            try
+            {
+                var ent = new CEntityInstance(r.HitEntity);
+                if (ent != null && ent.IsValid) entityName = ent.DesignerName ?? "?";
+            }
+            catch { entityName = "err"; }
+        }
+
+        string fracStr = ok ? r.Fraction.ToString("F3") : "FAIL";
+        string color = (ok && r.Fraction < 1.0f) ? "\x04" : "\x02";
+        player.PrintToChat($" \x01{label}: {color}{fracStr}\x01 ent:\x04{entityName}");
     }
 
     [ConsoleCommand("css_aim", "Aimbot ac/kapat")]
@@ -348,6 +625,33 @@ public class AimbotPlugin : BasePlugin
                 player.PrintToChat(" \x01[\x04RayTrace\x01] Duvar kontrolu: \x04AKTIF (FUNPLAY)");
             else
                 player.PrintToChat(" \x01[\x02RayTrace\x01] Duvar kontrolu: \x02DEVRE DISI");
+        }
+    }
+
+    [ConsoleCommand("css_aimdebug", "Aim debug modunu ac/kapat")]
+    public void OnAimDebugCommand(CCSPlayerController? player, CommandInfo commandInfo)
+    {
+        if (player == null || !player.IsValid || player.IsBot) return;
+        if (!AdminManager.PlayerHasPermissions(player, "@css/generic"))
+        {
+            player.PrintToChat(" \x02[Hata] \x01Yetkiniz yok.");
+            return;
+        }
+
+        if (_debugPlayers.Contains(player.SteamID))
+        {
+            _debugPlayers.Remove(player.SteamID);
+            player.PrintToChat(" \x01[\x04Debug\x01] Aim debug: \x02KAPALI");
+        }
+        else
+        {
+            _debugPlayers.Add(player.SteamID);
+            string platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "WIN" : "LNX";
+            player.PrintToChat(" \x01[\x04Debug\x01] Aim debug: \x04ACIK");
+            player.PrintToChat($" \x01Platform: \x04{platform}");
+            player.PrintToChat($" \x01Yontem: \x04{(_snapViewAnglesLoaded ? "SnapViewAngles" : "Teleport")}");
+            player.PrintToChat($" \x01RayTrace: \x04{(RayTrace.RayTrace.IsInitialized ? "AKTIF" : "KAPALI")}");
+            player.PrintToChat($" \x01FOV: \x04{GetFOV()} \x01MaxDist: \x04{GetMaxDistance()}");
         }
     }
 

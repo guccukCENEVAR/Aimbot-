@@ -53,16 +53,16 @@ public enum InteractionLayers : ulong
     CarriedWeapon           = 0x20000000,
     StaticLevel             = 0x40000000,
 
-    // Hazır maskeler
+    // Hazır maskeler (resmi FUNPLAY örneğiyle uyumlu)
     MASK_SHOT_PHYSICS = Solid | PlayerClip | Window | PassBullets | Player | NPC | Physics_Prop,
     MASK_SHOT_HITBOX  = Hitboxes | Player | NPC,
     MASK_SHOT_FULL    = MASK_SHOT_PHYSICS | Hitboxes,
     MASK_WORLD_ONLY   = Solid | Window | PassBullets,
     MASK_BRUSH_ONLY   = Solid | Window,
 
-    // Duvar kontrolü için maske:
-    // Solid duvarları algılar, oyuncular/trigger/entity haric
-    MASK_WALL_CHECK   = Solid | Window | PassBullets | WorldGeometry,
+    // Duvar kontrolü: MASK_SHOT_PHYSICS kullanılır (Windows/Linux uyumlu)
+    // Player/NPC filtrelemesi C# SingleTrace'de yapılır, InteractsExclude değil
+    MASK_WALL_CHECK   = MASK_SHOT_PHYSICS,
 }
 
 // ============================================================
@@ -76,20 +76,14 @@ public struct TraceOptions
     [FieldOffset(16)] public ulong InteractsExclude;
     [FieldOffset(24)] public int   DrawBeam;
 
-    /// Duvar kontrolü: gerçek duvarları algılar, oyuncular/trigger/prop geçer
+    /// Duvar kontrolü: MASK_SHOT_PHYSICS ile her şeyi algılar
+    /// Player/entity filtrelemesi C# tarafında yapılır (SingleTrace)
+    /// Bu yaklaşım resmi FUNPLAY örneğiyle uyumludur ve Windows/Linux'ta çalışır
     public static TraceOptions WallCheck => new()
     {
         InteractsAs = 0,
-        InteractsWith = (ulong)InteractionLayers.MASK_WALL_CHECK,
-        InteractsExclude = (ulong)(
-            InteractionLayers.Player | 
-            InteractionLayers.NPC | 
-            InteractionLayers.Trigger | 
-            InteractionLayers.Debris | 
-            InteractionLayers.Physics_Prop |
-            InteractionLayers.Pickup |
-            InteractionLayers.TouchAll
-        ),
+        InteractsWith = (ulong)InteractionLayers.MASK_SHOT_PHYSICS,
+        InteractsExclude = 0,
         DrawBeam = 0
     };
 
@@ -97,16 +91,8 @@ public struct TraceOptions
     public static TraceOptions WallCheckDebug => new()
     {
         InteractsAs = 0,
-        InteractsWith = (ulong)InteractionLayers.MASK_WALL_CHECK,
-        InteractsExclude = (ulong)(
-            InteractionLayers.Player | 
-            InteractionLayers.NPC | 
-            InteractionLayers.Trigger | 
-            InteractionLayers.Debris | 
-            InteractionLayers.Physics_Prop |
-            InteractionLayers.Pickup |
-            InteractionLayers.TouchAll
-        ),
+        InteractsWith = (ulong)InteractionLayers.MASK_SHOT_PHYSICS,
+        InteractsExclude = 0,
         DrawBeam = 1
     };
 
