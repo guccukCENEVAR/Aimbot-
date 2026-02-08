@@ -43,7 +43,7 @@ public class AimbotPlugin : BasePlugin
     private float GetFOV() => _config?.FOV ?? 360.0f;
     private float GetMaxDistance() => _config?.MaxDistance ?? 5000.0f;
     
-    private const float PredictionFactor = 0.0f;
+    private const float PredictionFactor = 0f;
     
     private AimbotConfig? _config;
     private const string ConfigFileName = "aimbot_config.json";
@@ -96,9 +96,20 @@ public class AimbotPlugin : BasePlugin
             if (target == null || target.PlayerPawn.Value == null)
                 continue;
 
-            // Recoil sıfırlama
+            // Recoil + Spread sıfırlama
             if (playerPawn.AimPunchAngle != null) { playerPawn.AimPunchAngle.X = 0; playerPawn.AimPunchAngle.Y = 0; playerPawn.AimPunchAngle.Z = 0; }
             if (playerPawn.AimPunchAngleVel != null) { playerPawn.AimPunchAngleVel.X = 0; playerPawn.AimPunchAngleVel.Y = 0; playerPawn.AimPunchAngleVel.Z = 0; }
+            playerPawn.AimPunchTickBase = -1;
+            playerPawn.AimPunchTickFraction = 0;
+
+            // Silah yayılımını (accuracy penalty) sıfırla - sağ/sol sekmeyi engeller
+            var weapon = playerPawn.WeaponServices?.ActiveWeapon?.Value;
+            if (weapon != null)
+            {
+                var csWeapon = weapon.As<CCSWeaponBase>();
+                if (csWeapon != null)
+                    csWeapon.AccuracyPenalty = 0;
+            }
 
             // Mevcut açı
             QAngle currentAngles;
