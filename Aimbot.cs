@@ -43,7 +43,7 @@ public class AimbotPlugin : BasePlugin
     private float GetFOV() => _config?.FOV ?? 360.0f;
     private float GetMaxDistance() => _config?.MaxDistance ?? 5000.0f;
     
-    private const float PredictionFactor = 0.015625f;
+    private const float PredictionFactor = 0.0f;
     
     private AimbotConfig? _config;
     private const string ConfigFileName = "aimbot_config.json";
