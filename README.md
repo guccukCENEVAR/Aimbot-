@@ -24,7 +24,7 @@ Eklentinin sorunsuz çalışabilmesi için sisteminizin aşağıdaki gereksiniml
 | Bileşen | Minimum Versiyon | Notlar |
 |---------|-----------------|--------|
 | **Counter-Strike 2 Server** | Son Sürüm | - |
-| **Metamod:Source** | v2.x | - |
+| **Metamod:Source** | v2.x | [İndir](https://www.sourcemm.net/downloads.php?branch=dev)  |
 | **CounterStrikeSharp** | v1.0.367+ (API v80+) | [İndir (GitHub)](https://github.com/roflmuffin/CounterStrikeSharp/releases)|
 | **.NET Runtime** | 8.0 | CSSharp için zorunlu |
 | **FUNPLAY Ray-Trace** | v1.0.12+ | [İndir (GitHub)](https://github.com/FUNPLAY-pro-CS2/Ray-Trace/releases) |
