@@ -108,7 +108,7 @@ public class AimbotPlugin : BasePlugin
             }
 
             // Hedef bul
-            var target = GetBestTarget(player);
+            var target = GetBestTarget(player, out float chosenAimZ);
             if (target == null || target.PlayerPawn.Value == null)
             {
                 if (showDebug)
@@ -143,11 +143,8 @@ public class AimbotPlugin : BasePlugin
 
             if (showDebug) player.PrintToChat($" \x04[D] Hedef: {target.PlayerName}");
 
-            // Recoil + Spread sıfırlama
-            if (playerPawn.AimPunchAngle != null) { playerPawn.AimPunchAngle.X = 0; playerPawn.AimPunchAngle.Y = 0; playerPawn.AimPunchAngle.Z = 0; }
-            if (playerPawn.AimPunchAngleVel != null) { playerPawn.AimPunchAngleVel.X = 0; playerPawn.AimPunchAngleVel.Y = 0; playerPawn.AimPunchAngleVel.Z = 0; }
-            playerPawn.AimPunchTickBase = -1;
-            playerPawn.AimPunchTickFraction = 0;
+            // Recoil + Spread sıfırlama (CS2 son güncellemeleriyle AimPunch özellikleri kaldırıldı)
+            playerPawn.ShotsFired = 0;
 
             // Silah yayılımını (accuracy penalty) sıfırla
             var weapon = playerPawn.WeaponServices?.ActiveWeapon?.Value;
@@ -170,8 +167,6 @@ public class AimbotPlugin : BasePlugin
             Vector eyePos = new Vector(playerPawn.AbsOrigin.X, playerPawn.AbsOrigin.Y, playerPawn.AbsOrigin.Z + myEyeZ);
 
             var targetPawn = target.PlayerPawn.Value;
-            float targetEyeZ = targetPawn.ViewOffset.Z;
-            if (targetEyeZ < 30.0f) targetEyeZ = 64.0f;
 
             Vector velocity = targetPawn.AbsVelocity ?? new Vector(0, 0, 0);
             Vector targetPos = targetPawn.AbsOrigin!;
@@ -181,7 +176,8 @@ public class AimbotPlugin : BasePlugin
                 targetPos.Z + velocity.Z * PredictionFactor
             );
 
-            Vector targetHead = new Vector(predictedPos.X, predictedPos.Y, predictedPos.Z + targetEyeZ);
+            // GetBestTarget'in dondurdugu Z: kafa acikssa kafa Z, kafa kapali gogus acikssa gogus Z
+            Vector targetHead = new Vector(predictedPos.X, predictedPos.Y, predictedPos.Z + chosenAimZ);
             QAngle targetAngle = CalculateAngle(eyePos, targetHead);
 
             // Smooth
@@ -297,20 +293,30 @@ public class AimbotPlugin : BasePlugin
         }
     }
 
-    private bool IsWallBetween(CCSPlayerController player, CCSPlayerController target)
-    {
-        if (!RayTrace.RayTrace.IsInitialized)
-            return false;
+    // Gogus yuksekligi: kafa Z'sinin %60'i (Z eksenine gore omuz/gogus seviyesi)
+    private const float ChestFactor = 0.6f;
 
+    /// <summary>
+    /// Hedefin gorunen nisan noktasi Z offset'ini dondurur.
+    /// Once kafaya trace, gorunurse kafa Z; kapaliysa goguse trace, gorunurse gogus Z.
+    /// Ikisi de kapaliysa null = hedef alinmaz.
+    /// RayTrace yuklu degilse permissive: kafa Z dondur (eski davranis).
+    /// </summary>
+    private float? GetVisibleAimZ(CCSPlayerController player, CCSPlayerController target)
+    {
         var playerPawn = player.PlayerPawn.Value;
         var targetPawn = target.PlayerPawn.Value;
 
-        if (playerPawn?.AbsOrigin == null || targetPawn?.AbsOrigin == null) return true;
-
-        float eyeZ = (playerPawn.Flags & (uint)PlayerFlags.FL_DUCKING) != 0 ? 46.0f : 64.0f;
+        if (playerPawn?.AbsOrigin == null || targetPawn?.AbsOrigin == null) return null;
 
         float targetEyeZ = targetPawn.ViewOffset.Z;
         if (targetEyeZ < 30.0f) targetEyeZ = 64.0f;
+
+        // RayTrace yoksa eski davranis: kafaya nisan al, duvar kontrolsuz
+        if (!RayTrace.RayTrace.IsInitialized)
+            return targetEyeZ;
+
+        float eyeZ = (playerPawn.Flags & (uint)PlayerFlags.FL_DUCKING) != 0 ? 46.0f : 64.0f;
 
         Vector startPos = new Vector(
             playerPawn.AbsOrigin.X,
@@ -321,37 +327,40 @@ public class AimbotPlugin : BasePlugin
         float tx = targetPawn.AbsOrigin.X;
         float ty = targetPawn.AbsOrigin.Y;
         float tz = targetPawn.AbsOrigin.Z;
-
         IntPtr skipHandle = playerPawn.Handle;
 
         try
         {
-            // 3 noktaya trace: baş, gövde, bel
-            // Herhangi biri açıksa → hedef görünür
+            // 1) Kafa: gorunurse direkt kafaya nisanlan (1 trace)
             Vector headPos = new Vector(tx, ty, tz + targetEyeZ);
             if (!SingleTrace(startPos, headPos, skipHandle))
-                return false;
+                return targetEyeZ;
 
-            Vector chestPos = new Vector(tx, ty, tz + targetEyeZ * 0.6f);
+            // 2) Kafa kapali, goguse dene (2. trace)
+            float chestZ = targetEyeZ * ChestFactor;
+            Vector chestPos = new Vector(tx, ty, tz + chestZ);
             if (!SingleTrace(startPos, chestPos, skipHandle))
-                return false;
+                return chestZ;
 
-            Vector waistPos = new Vector(tx, ty, tz + targetEyeZ * 0.35f);
-            if (!SingleTrace(startPos, waistPos, skipHandle))
-                return false;
-
-            return true; // 3 trace de duvar → hedef görünmüyor
+            // Ikisi de kapali → hedef gorunmuyor
+            return null;
         }
-        catch { return false; }
+        catch { return null; }
     }
+
+    // Eski API: sadece debug istatistikleri icin (OnTick debug branch)
+    private bool IsWallBetween(CCSPlayerController player, CCSPlayerController target)
+        => GetVisibleAimZ(player, target) == null;
 
     // ============================================================
     // Hedef Seçimi
     // ============================================================
-    private CCSPlayerController? GetBestTarget(CCSPlayerController player)
+    private CCSPlayerController? GetBestTarget(CCSPlayerController player, out float aimZ)
     {
         CCSPlayerController? bestTarget = null;
         float bestScore = float.MaxValue;
+        float bestAimZ = 64.0f;
+        aimZ = 64.0f;
 
         var playerPawn = player.PlayerPawn.Value;
         if (playerPawn?.AbsOrigin == null) return null;
@@ -376,23 +385,25 @@ public class AimbotPlugin : BasePlugin
             float dist = GetDistance(eyePos, enemyHead);
             if (dist > GetMaxDistance()) continue;
 
-            // Duvar kontrolü
-            if (IsWallBetween(player, enemy))
-                continue;
-
+            // FOV kontrolu (raytrace'den ucuz, once bunu yap)
             Vector dir = Normalize(enemyHead - eyePos);
             float dotProduct = Dot(forward, dir);
             float angle = MathF.Acos(Math.Clamp(dotProduct, -1.0f, 1.0f)) * (180.0f / MathF.PI);
-
             if (angle > GetFOV() / 2.0f) continue;
+
+            // Gorunurluk: kafa veya gogus acik mi?
+            float? visibleZ = GetVisibleAimZ(player, enemy);
+            if (visibleZ == null) continue;
 
             float score = angle + (dist / GetMaxDistance());
             if (score < bestScore)
             {
                 bestScore = score;
                 bestTarget = enemy;
+                bestAimZ = visibleZ.Value;
             }
         }
+        aimZ = bestAimZ;
         return bestTarget;
     }
 
@@ -417,7 +428,7 @@ public class AimbotPlugin : BasePlugin
         Vector eyePos = new Vector(pawn.AbsOrigin.X, pawn.AbsOrigin.Y, pawn.AbsOrigin.Z + pawn.ViewOffset.Z);
         Vector forward = new Vector();
         var viewAngle = pawn.V_angle ?? pawn.EyeAngles;
-        NativeAPI.AngleVectors(viewAngle!.Handle, forward.Handle, 0, 0);
+        NativeAPI.AngleVectors(viewAngle!.Handle, forward.Handle, nint.Zero, nint.Zero);
         Vector endPos = new Vector(eyePos.X + forward.X * 3000, eyePos.Y + forward.Y * 3000, eyePos.Z + forward.Z * 3000);
 
         bool ok = RayTrace.RayTrace.TraceWallDebug(eyePos, endPos, pawn.Handle, out var r);
@@ -540,7 +551,7 @@ public class AimbotPlugin : BasePlugin
         Vector eyePos = new Vector(pawn.AbsOrigin.X, pawn.AbsOrigin.Y, pawn.AbsOrigin.Z + pawn.ViewOffset.Z);
         Vector forward = new Vector();
         var viewAngle = pawn.V_angle ?? pawn.EyeAngles;
-        NativeAPI.AngleVectors(viewAngle!.Handle, forward.Handle, 0, 0);
+        NativeAPI.AngleVectors(viewAngle!.Handle, forward.Handle, nint.Zero, nint.Zero);
         Vector endPos = new Vector(eyePos.X + forward.X * 3000, eyePos.Y + forward.Y * 3000, eyePos.Z + forward.Z * 3000);
 
         // Test 1: MASK_SHOT_PHYSICS (resmi örnek)
@@ -563,7 +574,6 @@ public class AimbotPlugin : BasePlugin
     {
         var options = new TraceOptions
         {
-            InteractsAs = 0,
             InteractsWith = interactsWith,
             InteractsExclude = interactsExclude,
             DrawBeam = 0

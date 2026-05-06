@@ -1,54 +1,51 @@
-# Admin Aimbot Snap Pro
+# 🎯 Admin Aimbot Snap Pro
 
-Counter-Strike 2 sunucuları için gelişmiş admin aim assist eklentisi.
+Counter-Strike 2 sunucuları için geliştirilmiş, **FUNPLAY Ray-Trace** entegrasyonuna sahip profesyonel admin aim assist eklentisi.
 
-## Özellikler
+---
 
-- **SnapViewAngles** - Engine'in bot bakış açısı fonksiyonunu kullanır. Teleport'a göre model glitch oluşmaz. Yüklenemezse otomatik Teleport fallback'e döner.
-- **Duvar Kontrolü (FUNPLAY Ray-Trace)** - Engine seviyesinde ray tracing ile hedefle arada gerçek duvar varsa kilitleme yapmaz.
-- **Hareket Tahminleme** - Hedefin hızını analiz ederek 64 tick hızına göre bir sonraki konumunu tahmin eder.
-  //hareket tahminleme stok olarak kapalı
-- **Akıllı Hedef Seçimi** - Bakış açısına (FOV) en yakın ve en kısa mesafedeki düşmanı seçen skorlama algoritması.
-- **Çoklu Nokta Trace** - Baş, gövde ve bel olmak üzere 3 farklı noktaya ışın göndererek hedef görünürlüğünü doğrular.
-- **Smooth Aim** - Yapılandırılabilir yumuşaklık faktörü ile hedefe doğal geçiş. Dik açılarda otomatik hızlanma.
-- **Eğilme Algılama** - Hem kullanıcının hem hedefin eğilme durumunu algılayarak göz yüksekliğini dinamik ayarlar.
-- **Recoil Sıfırlama** - AimPunch ve AimPunchVelocity otomatik sıfırlanır.
-- **Admin Yetki Sistemi** - Sadece `@css/generic` yetkisine sahip adminler kullanabilir.
-- **Config Desteği** - SmoothFactor, FOV ve MaxDistance JSON config'ten okunur.
+## ✨ Özellikler
 
-## Gereksinimler
+- 👁️ **SnapViewAngles Entegrasyonu:** CS2 engine'inin yerleşik bot bakış açısı fonksiyonunu kullanır. Geleneksel Teleport yöntemlerine kıyasla model "glitch"lerini veya titremeleri engeller. Signature bulunamazsa otomatik Teleport fallback dev devreye girer.
+- 🧱 **Gelişmiş Duvar Kontrolü:** FUNPLAY Ray-Trace altyapısı sayesinde oyun motoru seviyesinde kusursuz ışın izleme (ray tracing). Hedef ile aranızda fiziksel bir duvar varsa kilitlenme gerçekleşmez.
+- 🎯 **Akıllı Hedef Seçimi (FOV & Mesafe):** Bakış açısına (FOV) en yakın ve mesafesi en kısa olan düşmanı hassas bir skorlama algoritması ile seçer.
+- 📏 **Dinamik Yükseklik & Eğilme Algılama:** Hem kullanıcının hem de hedefin eğilme durumlarını anlık analiz ederek nişangah yüksekliğini (göz hizası) dinamik olarak ayarlar.
+- 🔍 **2 Hedefli (Kafa + Göğüs) Görünürlük Testi:** Hedefin görünürlüğünü doğrulamak için optimize edilmiş 2 noktalı trace kontrolü uygular. Önce kafa kontrol edilir, kafa engellenmişse doğrudan göğüs hedeflenir.
+- 🌊 **Smooth Aim:** Konfigürasyon dosyası üzerinden ayarlanabilen pürüzsüz geçiş (smooth) faktörü ile hedefe çok daha doğal kilitlenme sağlar.
+- 🛡️ **Recoil (AimPunch) Sıfırlama:** Silah geri tepmesi (AimPunch / AimPunchVelocity) algılanır ve stabil bir hedefleme sunulur.
+- 👑 **Admin Yetki Sistemi:** Oyuncu dengesini korumak için sadece `@css/generic` yetkisine sahip sunucu yöneticileri tarafından kullanılabilir.
 
-| Bileşen | Minimum Versiyon |
-|---------|-----------------|
-| Counter-Strike 2 Server | Son sürüm |
-| Metamod:Source | 2.x |
-| CounterStrikeSharp | v1.0.362+ (API v80+) |
-| FUNPLAY Ray-Trace | v1.0.3+ |
-| .NET | 8.0 Runtime |
+---
 
-## Kurulum
+## ⚙️ Gereksinimler
 
-### 1. FUNPLAY Ray-Trace Metamod Modülü (ZORUNLU)
+Eklentinin sorunsuz çalışabilmesi için sisteminizin aşağıdaki gereksinimleri karşıladığından emin olun:
 
-Duvar kontrolü için gereklidir. Modül olmadan duvar kontrolü çalışmaz.
+| Bileşen | Minimum Versiyon | Notlar |
+|---------|-----------------|--------|
+| **Counter-Strike 2 Server** | Son Sürüm | - |
+| **Metamod:Source** | v2.x | - |
+| **CounterStrikeSharp** | v1.0.362+ (API v80+) | Güncel API önerilir |
+| **.NET Runtime** | 8.0 | CSSharp için zorunlu |
+| **FUNPLAY Ray-Trace** | v1.0.3+ | [İndir (GitHub)](https://github.com/FUNPLAY-pro-CS2/Ray-Trace/releases) |
 
-**İndirme:** https://github.com/FUNPLAY-pro-CS2/Ray-Trace/releases
+---
 
-```
+## 🚀 Kurulum Adımları
+
+### 1. FUNPLAY Ray-Trace Kurulumu (ZORUNLU)
+Duvar arkası hedeflemeyi engellemek için bu modül kesinlikle gereklidir. İndirdiğiniz dosyaları aşağıdaki gibi sunucunuza yükleyin:
+```text
 game/csgo/addons/
 ├── RayTrace/
-│   └── bin/linuxsteamrt64/RayTrace.so
+│   └── bin/linuxsteamrt64/RayTrace.so  (veya RayTrace.dll)
 └── metamod/
     └── RayTrace.vdf
 ```
 
-### 2. GameData Dosyası
-
-`Aimbot.json` dosyasını gamedata klasörüne kopyalayın:
-
-```
-game/csgo/addons/counterstrikesharp/gamedata/Aimbot.json
-```
+### 2. GameData (Signature) Dosyası
+`Aimbot.json` adlı dosyayı oluşturup, aşağıdaki konuma yerleştirin:
+`game/csgo/addons/counterstrikesharp/gamedata/Aimbot.json`
 
 ```json
 {
@@ -62,38 +59,35 @@ game/csgo/addons/counterstrikesharp/gamedata/Aimbot.json
 }
 ```
 
-### 3. Plugin Derleme
-
+### 3. Eklentiyi Derleme & Yükleme
+Eğer açık kaynak kodunu derleyecekseniz proje dizininde şu komutları çalıştırın:
 ```bash
 dotnet restore
 dotnet build -c Release
 ```
+Oluşan `Aimbot.dll` dosyasını sunucunuzda aşağıdaki dizine taşıyın:
+`game/csgo/addons/counterstrikesharp/plugins/Aimbot/Aimbot.dll`
 
-### 4. Plugin Dosyalarını Kopyalama
+**Ardından sunucunuzu yeniden başlatın.** Kurulum başarılıysa konsolda eklentinin yüklendiğine dair log mesajları göreceksiniz.
 
-```
-game/csgo/addons/counterstrikesharp/plugins/Aimbot/
-└── Aimbot.dll
-```
+---
 
-### 5. Sunucuyu Başlatma
+## 🎮 Kullanım ve Komutlar
 
-Sunucuyu yeniden başlatın. Konsolda mesajlar görünecektir.
+Aşağıdaki komutlar oyun içi chat (`!`) veya konsol (`css_`) üzerinden kullanılabilir:
 
-## Kullanım
+| Komut | Konsol Karşılığı | Açıklama |
+|-------|------------------|---------|
+| `!aim` | `css_aim` | Aimbot assist özelliğini aktif/pasif hale getirir. |
+| `!tracetest` | `css_tracetest` | Baktığınız yöne ışın (ray) gönderir, engelleri ve hedef entity'leri test eder. |
+| `!aimdebug` | `css_aimdebug` | Eklentinin durumunu, trace loglarını ve hedef seçimi kararlarını ekrana yazdırır. |
 
-| Komut | Açıklama |
-|-------|---------|
-| `!aim` | Aim assist aç/kapat |
-| `!tracetest` | Ray trace teşhis komutu (baktığın yöne ışın gönderir) |
+---
 
-## Yapılandırma
+## 🛠️ Yapılandırma (Config)
 
-İlk çalıştırmada otomatik oluşturulur:
-
-```
-game/csgo/addons/counterstrikesharp/configs/plugins/Aimbot/aimbot_config.json
-```
+Eklenti ilk kez çalıştığında otomatik olarak bir yapılandırma dosyası oluşturur:
+`game/csgo/addons/counterstrikesharp/configs/plugins/Aimbot/aimbot_config.json`
 
 ```json
 {
@@ -103,52 +97,20 @@ game/csgo/addons/counterstrikesharp/configs/plugins/Aimbot/aimbot_config.json
 }
 ```
 
-| Ayar | Varsayılan | Açıklama |
-|------|-----------|---------|
-| SmoothFactor | 0.5 | Yumuşaklık (0.0 = yavaş, 1.0 = anında snap) |
-| FOV | 360.0 | Görüş açısı (derece) |
-| MaxDistance | 5000.0 | Maksimum hedef mesafesi (unit) |
+- **`SmoothFactor`**: Kameranın hedefe kilitlenme hızıdır (`0.0` yavaş, `1.0` anında/snapping).
+- **`FOV`**: Nişangahınızın kaç derecelik açısındaki hedeflerin algılanacağını belirler (`360.0` arkanızdakiler dahil her yeri kapsar).
+- **`MaxDistance`**: Oyun içi birim olarak hedefin ne kadar uzaktan algılanacağını ifade eder (`5000.0` geniş bir menzildir).
 
-## Dosya Yapısı
+---
 
-```
-aimboty/
-├── Aimbot.cs           # Ana plugin
-├── RayTrace.cs         # FUNPLAY Ray-Trace C# wrapper
-├── Aimbot.csproj       # Proje dosyası (.NET 8.0)
-└── README.md
-```
+## ⚠️ Önemli Uyarılar
 
-## Teknik Detaylar
+> [!WARNING]
+> **Bu eklenti SADECE YÖNETİCİ (ADMIN) kullanımı için tasarlanmıştır!**
+> Normal oyunculara `@css/generic` yetkisi vermeyin. Topluluk sunucularında adil oyun ortamını bozmamak adına hile korumalarıyla (VAC vb.) çakışabileceğini ve dengesizlik yaratabileceğini unutmayın.
 
-### Açı Uygulama: SnapViewAngles
+## 👨‍💻 Geliştirici
 
-`CCSBot::SnapViewAngles` - CS2 engine'inin bot bakış açısı fonksiyonu. GameData signature ile yüklenir.
+**guccukCENEVAR** - [GitHub Profilim](https://github.com/guccukCENEVAR)
 
-- Sadece view angle değiştirir (pozisyon/rotasyon etkilenmez)
-- Model glitch oluşmaz (Teleport'ta yaşanan "yatma" sorunu yok)
-- Yüklenemezse otomatik olarak Teleport fallback'e döner
-
-### Ray Tracing: FUNPLAY Ray-Trace
-
-[FUNPLAY Ray-Trace](https://github.com/FUNPLAY-pro-CS2/Ray-Trace) Metamod modülü üzerinden engine seviyesinde trace.
-
-- `InteractsWith`: Solid, Window, PassBullets, WorldGeometry
-- `InteractsExclude`: Player, NPC, Trigger, Debris, Physics_Prop, Pickup, TouchAll
-- 3 noktaya trace: baş, gövde (%60), bel (%35)
-- Herhangi biri geçerse hedef görünür kabul edilir
-
-## Uyarılar
-
-> **Bu eklenti sadece ADMIN kullanımı için tasarlanmıştır.**
-
-- Normal oyunculara yetki verilmesi oyun dengesini bozabilir
-- Sadece özel/topluluk sunucularında kullanılması önerilir
-
-## Geliştirici
-
-**guccukCENEVAR** - [GitHub](https://github.com/guccukCENEVAR)
-
-## Lisans
-
-Bu proje eğitim amaçlıdır. Kullanımı kullanıcının sorumluluğundadır.
+*Bu proje tamamıyla eğitim ve yönetim kolaylığı sağlama amaçlıdır. Kullanımından doğacak sonuçlar sunucu sahibinin kendi sorumluluğundadır.*

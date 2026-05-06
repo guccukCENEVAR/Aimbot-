@@ -52,13 +52,24 @@ public enum InteractionLayers : ulong
     ServerEntityOnClient    = 0x10000000,
     CarriedWeapon           = 0x20000000,
     StaticLevel             = 0x40000000,
+    csgo_team1              = 0x80000000,
+    csgo_team2              = 0x100000000,
+    csgo_grenadeclip        = 0x200000000,
+    csgo_droneclip          = 0x400000000,
+    csgo_moveable           = 0x800000000,
+    csgo_opaque             = 0x1000000000,
+    csgo_monster            = 0x2000000000,
+    csgo_thrown_grenade     = 0x8000000000,
 
     // Hazır maskeler (resmi FUNPLAY örneğiyle uyumlu)
     MASK_SHOT_PHYSICS = Solid | PlayerClip | Window | PassBullets | Player | NPC | Physics_Prop,
     MASK_SHOT_HITBOX  = Hitboxes | Player | NPC,
     MASK_SHOT_FULL    = MASK_SHOT_PHYSICS | Hitboxes,
     MASK_WORLD_ONLY   = Solid | Window | PassBullets,
+    MASK_GRENADE      = Solid | Window | Physics_Prop | PassBullets,
     MASK_BRUSH_ONLY   = Solid | Window,
+    MASK_PLAYER_MOVE  = Solid | Window | PlayerClip | PassBullets,
+    MASK_NPC_MOVE     = Solid | Window | NPCClip | PassBullets,
 
     // Duvar kontrolü: MASK_SHOT_PHYSICS kullanılır (Windows/Linux uyumlu)
     // Player/NPC filtrelemesi C# SingleTrace'de yapılır, InteractsExclude değil
@@ -68,20 +79,18 @@ public enum InteractionLayers : ulong
 // ============================================================
 // TraceOptions - Trace seçenekleri (C++ struct ile uyumlu)
 // ============================================================
-[StructLayout(LayoutKind.Explicit, Size = 32)]
+[StructLayout(LayoutKind.Explicit, Size = 24)]
 public struct TraceOptions
 {
-    [FieldOffset(0)]  public ulong InteractsAs;
-    [FieldOffset(8)]  public ulong InteractsWith;
-    [FieldOffset(16)] public ulong InteractsExclude;
-    [FieldOffset(24)] public int   DrawBeam;
+    [FieldOffset(0)]  public ulong InteractsWith;
+    [FieldOffset(8)]  public ulong InteractsExclude;
+    [FieldOffset(16)] public int   DrawBeam;
 
     /// Duvar kontrolü: MASK_SHOT_PHYSICS ile her şeyi algılar
     /// Player/entity filtrelemesi C# tarafında yapılır (SingleTrace)
     /// Bu yaklaşım resmi FUNPLAY örneğiyle uyumludur ve Windows/Linux'ta çalışır
     public static TraceOptions WallCheck => new()
     {
-        InteractsAs = 0,
         InteractsWith = (ulong)InteractionLayers.MASK_SHOT_PHYSICS,
         InteractsExclude = 0,
         DrawBeam = 0
@@ -90,7 +99,6 @@ public struct TraceOptions
     /// Duvar kontrolü + debug ışın (tracetest komutu için)
     public static TraceOptions WallCheckDebug => new()
     {
-        InteractsAs = 0,
         InteractsWith = (ulong)InteractionLayers.MASK_SHOT_PHYSICS,
         InteractsExclude = 0,
         DrawBeam = 1
@@ -99,7 +107,6 @@ public struct TraceOptions
     /// Tam mermi trace (hitbox dahil)
     public static TraceOptions ShotFull => new()
     {
-        InteractsAs = 0,
         InteractsWith = (ulong)InteractionLayers.MASK_SHOT_FULL,
         InteractsExclude = 0,
         DrawBeam = 0
@@ -109,7 +116,7 @@ public struct TraceOptions
 // ============================================================
 // TraceResult - Trace sonucu (C++ struct ile uyumlu)
 // ============================================================
-[StructLayout(LayoutKind.Explicit, Size = 48)]
+[StructLayout(LayoutKind.Explicit, Size = 44)]
 public struct TraceResult
 {
     [FieldOffset(0)]  public float EndPosX;
@@ -162,7 +169,7 @@ public static class RayTrace
             
             try
             {
-                factory = Utilities.MetaFactory("CRayTraceInterface001");
+                factory = Utilities.MetaFactory("CRayTraceInterface002");
             }
             catch (Exception ex)
             {
@@ -182,7 +189,7 @@ public static class RayTrace
             if (_handle == nint.Zero)
             {
                 _gaveUp = true;
-                InitError = "CRayTraceInterface001 handle sifir.";
+                InitError = "CRayTraceInterface002 handle sifir.";
                 return;
             }
 
