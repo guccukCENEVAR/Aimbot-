@@ -143,8 +143,26 @@ public class AimbotPlugin : BasePlugin
 
             if (showDebug) player.PrintToChat($" \x04[D] Hedef: {target.PlayerName}");
 
-            // Recoil + Spread sıfırlama (CS2 son güncellemeleriyle AimPunch özellikleri kaldırıldı)
-            playerPawn.ShotsFired = 0;
+            // Recoil + Spread sıfırlama (Yeni AimPunchServices yapısı)
+            var aimPunchServices = playerPawn.AimPunchServices;
+            if (aimPunchServices != null)
+            {
+                aimPunchServices.PredictableBaseAngle.X = 0;
+                aimPunchServices.PredictableBaseAngle.Y = 0;
+                aimPunchServices.PredictableBaseAngle.Z = 0;
+
+                aimPunchServices.PredictableBaseAngleVel.X = 0;
+                aimPunchServices.PredictableBaseAngleVel.Y = 0;
+                aimPunchServices.PredictableBaseAngleVel.Z = 0;
+
+                aimPunchServices.PredictableBaseTick = -1;
+                aimPunchServices.PredictableBaseTickInterpAmount = 0;
+
+                aimPunchServices.UnpredictableBaseAngle.X = 0;
+                aimPunchServices.UnpredictableBaseAngle.Y = 0;
+                aimPunchServices.UnpredictableBaseAngle.Z = 0;
+                aimPunchServices.UnpredictableBaseTick = -1;
+            }
 
             // Silah yayılımını (accuracy penalty) sıfırla
             var weapon = playerPawn.WeaponServices?.ActiveWeapon?.Value;
